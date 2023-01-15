@@ -1,4 +1,8 @@
 from flask import Flask, render_template, request, redirect
+from flask_sqlalchemy import SQLAlchemy
+from flask_mongoengine import MongoEngine
+from flask_pymongo import PyMongo
+from setup_db import DatabaseSetup
 import imaplib
 import email
 
@@ -10,51 +14,22 @@ app = Flask(__name__)
 def index():
     return render_template('index.html')
 
-# Define a route for the login page
-@app.route('/login', methods=['POST'])
-def login():
-    # Get the email and password from the form
-    email = request.form['email']
-    password = request.form['password']
+@app.route('/signup', methods=['POST'])
+def signup():
+    # Get user information from the request
+    user_info = request.get_json()
 
-    # Connect to the email server
-    mail = imaplib.IMAP4_SSL('imap.example.com')
+    setup = DatabaseSetup('mysql://username:password@host:port/dbname', 'mongodb://username:password@host:port/dbname')
+    setup.create_all()
 
-    # Login
-    mail.login(email, password)
+    # Create a new user object
+    new_user = User(name=user_info['name'], email=user_info['email'], password=user_info['password'])
 
-    # Select the inbox
-    mail.select('inbox')
+    # Add the new user to the session
+    db.session.add(new_user)
 
-    # Search for all emails and retrieve the first one
-    status, messages = mail.search(None, 'ALL')
-    if status == 'OK':
-        data = []
-        for message in messages[0].split():
-            # Fetch the email
-            status, data_temp = mail.fetch(message, '(RFC822)')
-            if status == 'OK':
-                # Parse the email
-                msg = email.message_from_bytes(data_temp[0][1])
-                subject = msg['Subject']
-                sender = msg['From']
-                for part in msg.walk():
-                    if part.get_content_maintype() == 'multipart':
-                        continue
-                    if part.get('Content-Disposition') is None:
-                        continue
-                    filename = part.get_filename()
-                    if filename is not None:
-                        data.append({'Subject': subject, 'From': sender, 'Attachment': filename})
-        # Close the mailbox
-        mail.close()
-
-        # Return the emails and attachments as a table
-        return render_template('emails.html', data=data)
-    else:
-        # Return an error message if the login failed
-        return redirect('/')
-
+    db.session.commit()
+    return jsonify({'message': 'User created successfully'}), 201
 # Run the app
 if __name__ == '__main__':
     app.run(port=8000)
